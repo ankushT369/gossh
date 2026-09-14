@@ -47,66 +47,135 @@ type Config struct {
 }
 
 type Session struct {
+	// mu guards the tcp/ws fields themselves. It is never held across a
+	// blocking network operation so that close() can always make progress,
+	// even while a pump is parked in a read or a write.
+	mu  sync.Mutex
 	tcp net.Conn
 	ws  *websocket.Conn
 
-	mu   sync.Mutex
+	// Writes are serialized per connection: gorilla/websocket allows only
+	// one concurrent writer, and interleaved TCP writes would corrupt the
+	// stream. The two locks are separate so that a stalled WebSocket peer
+	// cannot also block the TCP direction.
+	wsWriteMu  sync.Mutex
+	tcpWriteMu sync.Mutex
+
 	once sync.Once
 	done chan struct{}
 }
+
+var errSessionClosed = fmt.Errorf("session is closed")
 
 func NewSession() *Session {
 	return &Session{done: make(chan struct{})}
 }
 
+// closed reports whether the session has already been torn down.
+func (s *Session) closed() bool {
+	select {
+	case <-s.done:
+		return true
+	default:
+		return false
+	}
+}
+
+// close tears the session down exactly once. Closing both connections is what
+// unblocks any read or write that is currently in flight, so the pump on the
+// other side of the tunnel exits instead of waiting on a peer that is gone.
 func (s *Session) close() {
 	s.once.Do(func() {
+		// Closed first so that setTCP/setWS, which check under mu, can
+		// never store a connection that this call has already passed.
 		close(s.done)
 
 		s.mu.Lock()
-		defer s.mu.Unlock()
+		tcp, ws := s.tcp, s.ws
+		s.mu.Unlock()
 
-		if s.tcp != nil {
-			_ = s.tcp.Close()
+		if ws != nil {
+			_ = ws.Close()
 		}
-		if s.ws != nil {
-			_ = s.ws.Close()
+		if tcp != nil {
+			_ = tcp.Close()
 		}
 	})
 }
 
-func (s *Session) setTCP(c net.Conn) {
+// setTCP attaches the TCP connection. A connection that arrives after the
+// session was torn down is closed straight away rather than stored, so it
+// cannot be leaked by a shutdown that raced the dial.
+func (s *Session) setTCP(c net.Conn) error {
 	s.mu.Lock()
+	if s.closed() {
+		s.mu.Unlock()
+		_ = c.Close()
+		return errSessionClosed
+	}
 	s.tcp = c
 	s.mu.Unlock()
+
+	return nil
 }
 
-func (s *Session) setWS(c *websocket.Conn) {
+func (s *Session) setWS(c *websocket.Conn) error {
 	s.mu.Lock()
+	if s.closed() {
+		s.mu.Unlock()
+		_ = c.Close()
+		return errSessionClosed
+	}
 	s.ws = c
 	s.mu.Unlock()
+
+	return nil
+}
+
+func (s *Session) getTCP() net.Conn {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.tcp
+}
+
+func (s *Session) getWS() *websocket.Conn {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.ws
 }
 
 func (s *Session) sendWS(data []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.ws == nil {
+	ws := s.getWS()
+	if ws == nil {
 		return fmt.Errorf("websocket is not connected")
 	}
 
-	return s.ws.WriteMessage(websocket.BinaryMessage, data)
+	s.wsWriteMu.Lock()
+	defer s.wsWriteMu.Unlock()
+
+	if s.closed() {
+		return errSessionClosed
+	}
+
+	return ws.WriteMessage(websocket.BinaryMessage, data)
 }
 
 func (s *Session) sendTCP(data []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.tcp == nil {
+	tcp := s.getTCP()
+	if tcp == nil {
 		return fmt.Errorf("tcp connection is not connected")
 	}
 
-	_, err := s.tcp.Write(data)
+	s.tcpWriteMu.Lock()
+	defer s.tcpWriteMu.Unlock()
+
+	if s.closed() {
+		return errSessionClosed
+	}
+
+	_, err := tcp.Write(data)
 	return err
 }
 
@@ -360,7 +429,11 @@ func handleServerWebSocket(w http.ResponseWriter, r *http.Request, cfg Config) {
 	}
 
 	session := NewSession()
-	session.setWS(ws)
+	if err := session.setWS(ws); err != nil {
+		errorf("Cannot attach WebSocket connection: %v", err)
+		session.close()
+		return
+	}
 
 	infof("WebSocket connection established")
 
@@ -372,24 +445,43 @@ func handleServerWebSocket(w http.ResponseWriter, r *http.Request, cfg Config) {
 		return
 	}
 
-	session.setTCP(tcp)
+	if err := session.setTCP(tcp); err != nil {
+		errorf("Cannot attach TCP connection: %v", err)
+		session.close()
+		return
+	}
+
 	infof("Connected to sshd successfully")
 
-	runServerSession(session)
+	runSession(session, serverMode)
 }
 
-func runServerSession(s *Session) {
+// runSession pumps bytes between the TCP and WebSocket sides of a session
+// until either side goes away. Both connections are read exactly once each,
+// by the single pump that owns them, and both pumps close the session on the
+// way out: whichever side ends first tears the other one down instead of
+// leaving it parked in a read that would never return.
+func runSession(s *Session, mode string) {
 	defer s.close()
+
+	tcp := s.getTCP()
+	ws := s.getWS()
+
+	if tcp == nil || ws == nil {
+		errorf("Session is missing a connection, aborting")
+		return
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// WebSocket -> SSH
+	// WebSocket -> TCP
 	go func() {
 		defer wg.Done()
+		defer s.close()
 
 		for {
-			messageType, data, err := s.ws.ReadMessage()
+			messageType, data, err := ws.ReadMessage()
 			if err != nil {
 				debugf("WebSocket read ended: %v", err)
 				return
@@ -399,7 +491,7 @@ func runServerSession(s *Session) {
 				continue
 			}
 
-			debugf("Data from websocket in SERVER mode: %d bytes", len(data))
+			debugf("Data from websocket in %s mode: %d bytes", strings.ToUpper(mode), len(data))
 
 			if err := s.sendTCP(data); err != nil {
 				debugf("TCP write failed: %v", err)
@@ -410,16 +502,17 @@ func runServerSession(s *Session) {
 		}
 	}()
 
-	// SSH -> WebSocket
+	// TCP -> WebSocket
 	go func() {
 		defer wg.Done()
+		defer s.close()
 
 		buf := make([]byte, 32*1024)
 
 		for {
-			n, err := s.tcp.Read(buf)
+			n, err := tcp.Read(buf)
 			if n > 0 {
-				debugf("SSH read %d bytes", n)
+				debugf("TCP read %d bytes in %s mode", n, strings.ToUpper(mode))
 
 				if err := s.sendWS(buf[:n]); err != nil {
 					debugf("WebSocket write failed: %v", err)
@@ -487,7 +580,10 @@ func runClient(cfg Config) error {
 
 func handleClientTCP(tcp net.Conn, wsURL string, originalURL string) {
 	session := NewSession()
-	session.setTCP(tcp)
+	if err := session.setTCP(tcp); err != nil {
+		errorf("Cannot attach TCP connection: %v", err)
+		return
+	}
 	defer session.close()
 
 	host := tlsHost(originalURL)
@@ -510,75 +606,14 @@ func handleClientTCP(tcp net.Conn, wsURL string, originalURL string) {
 		return
 	}
 
-	session.setWS(ws)
+	if err := session.setWS(ws); err != nil {
+		errorf("Cannot attach WebSocket connection: %v", err)
+		return
+	}
+
 	infof("WebSocket connection successfully established")
 
-	runClientSession(session)
-}
-
-func runClientSession(s *Session) {
-	defer s.close()
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// Local SSH client -> WebSocket
-	go func() {
-		defer wg.Done()
-
-		buf := make([]byte, 32*1024)
-
-		for {
-			n, err := s.tcp.Read(buf)
-
-			if n > 0 {
-				debugf("Client read %d bytes", n)
-
-				if err := s.sendWS(buf[:n]); err != nil {
-					debugf("WebSocket write failed: %v", err)
-					return
-				}
-
-				verbosef("Forwarded %d bytes TCP -> WS", n)
-			}
-
-			if err != nil {
-				if err != io.EOF {
-					debugf("TCP read ended: %v", err)
-				}
-				return
-			}
-		}
-	}()
-
-	// WebSocket -> local SSH client
-	go func() {
-		defer wg.Done()
-
-		for {
-			messageType, data, err := s.ws.ReadMessage()
-			if err != nil {
-				debugf("WebSocket read ended: %v", err)
-				return
-			}
-
-			if messageType != websocket.BinaryMessage && messageType != websocket.TextMessage {
-				continue
-			}
-
-			debugf("Data from websocket in CLIENT mode: %d bytes", len(data))
-
-			if err := s.sendTCP(data); err != nil {
-				debugf("TCP write failed: %v", err)
-				return
-			}
-
-			verbosef("Forwarded %d bytes WS -> TCP", len(data))
-		}
-	}()
-
-	wg.Wait()
-	infof("Client disconnected")
+	runSession(session, clientMode)
 }
 
 func isClosedNetworkError(err error) bool {
