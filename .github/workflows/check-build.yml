@@ -26,17 +26,15 @@ jobs:
           cache: true
 
       - name: Build
-        run: go build ./...
+        run: make build
 
       - name: Vet
-        run: go vet ./...
+        run: make vet
 
-      # -race needs cgo, which is enabled by default on both runners.
+      # make test runs go test -race, which needs cgo. It is enabled by
+      # default on both runners.
       - name: Test
-        run: go test -race -count=1 ./...
-
-      - name: Build binary
-        run: go build -o bin/gossh .
+        run: make test
 
       - name: CLI smoke test
         run: |
