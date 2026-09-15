@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	version	   = "1.1.0"
+	version = "1.1.0"
 
 	defaultSSHPort  = 22
 	defaultHTTPPort = 7777
@@ -272,7 +272,13 @@ func convertToWSS(raw string) (string, error) {
 		return "", fmt.Errorf("URL has no host")
 	}
 
-	u.Scheme = "wss"
+	// WebSocket URL normalization
+	switch u.Scheme {
+	case "http":
+		u.Scheme = "ws"
+	case "https":
+		u.Scheme = "wss"
+	}
 
 	if !strings.HasSuffix(u.Path, wsPath) {
 		u.Path = strings.TrimRight(u.Path, "/") + wsPath
@@ -493,8 +499,8 @@ func handleClientTCP(tcp net.Conn, wsURL string, originalURL string) {
 	host := tlsHost(originalURL)
 
 	dialer := websocket.Dialer{
-		ReadBufferSize:  32 * 1024,
-		WriteBufferSize: 32 * 1024,
+		ReadBufferSize:   32 * 1024,
+		WriteBufferSize:  32 * 1024,
 		HandshakeTimeout: 15 * time.Second,
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
