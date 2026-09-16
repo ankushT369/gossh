@@ -16,6 +16,10 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"bytes"
+
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/term"
 
 	"github.com/gorilla/websocket"
 )
@@ -29,6 +33,7 @@ const (
 
 	serverMode = "server"
 	clientMode = "client"
+	rclientMode = "rclient"
 
 	wsPath = "/ws"
 )
@@ -44,6 +49,7 @@ type Config struct {
 	sshdPort       int
 	tcpServerPort  int
 	wsURL          string
+	target		   string
 }
 
 type Session struct {
@@ -53,6 +59,78 @@ type Session struct {
 	mu   sync.Mutex
 	once sync.Once
 	done chan struct{}
+}
+
+type wsConn struct {
+	ws     *websocket.Conn
+	reader *bytes.Reader
+	mu     sync.Mutex
+}
+
+func (c *wsConn) Read(p []byte) (int, error) {
+	for {
+		if c.reader != nil && c.reader.Len() > 0 {
+			return c.reader.Read(p)
+		}
+
+		messageType, data, err := c.ws.ReadMessage()
+		if err != nil {
+			return 0, err
+		}
+
+		if messageType != websocket.BinaryMessage &&
+			messageType != websocket.TextMessage {
+			continue
+		}
+
+		c.reader = bytes.NewReader(data)
+	}
+}
+
+func (c *wsConn) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	err := c.ws.WriteMessage(websocket.BinaryMessage, p)
+	if err != nil {
+		return 0, err
+	}
+
+	return len(p), nil
+}
+
+func (c *wsConn) Close() error {
+	return c.ws.Close()
+}
+
+func (c *wsConn) LocalAddr() net.Addr {
+	return dummyAddr("local")
+}
+
+func (c *wsConn) RemoteAddr() net.Addr {
+	return dummyAddr("remote")
+}
+
+func (c *wsConn) SetDeadline(t time.Time) error {
+	return nil
+}
+
+func (c *wsConn) SetReadDeadline(t time.Time) error {
+	return nil
+}
+
+func (c *wsConn) SetWriteDeadline(t time.Time) error {
+	return nil
+}
+
+type dummyAddr string
+
+func (a dummyAddr) Network() string {
+	return "websocket"
+}
+
+func (a dummyAddr) String() string {
+	return string(a)
 }
 
 func NewSession() *Session {
@@ -108,6 +186,39 @@ func (s *Session) sendTCP(data []byte) error {
 
 	_, err := s.tcp.Write(data)
 	return err
+}
+
+// Helper function to check is target in ssh format
+func isTargetInSshFormat(target string) bool {
+	return strings.Count(target, "@") == 1
+}
+
+// Helper function to parse ssh format and get username
+func parseSshFormatGetUserName(target string) string {
+	idx := strings.Index(target, "@")
+
+	if idx == -1 {
+		fmt.Println("Character not found!")
+		return ""
+	}
+
+	username := target[:idx]
+
+	return username
+}
+
+// Helper function to parse ssh format and get hostname
+func parseSshFormatGetHostName(target string) string {
+	idx := strings.Index(target, "@")
+
+	if idx == -1 {
+		fmt.Println("Character not found!")
+		return ""
+	}
+
+	hostname := target[idx+1:]
+
+	return hostname
 }
 
 func debugf(format string, args ...any) {
@@ -178,14 +289,16 @@ func parseArgs(args []string) (Config, error) {
 		tcpServerPort:  defaultTCPPort,
 	}
 
-	switch args[0] {
-	case "version", "--version":
+	switch {
+	case "version" == args[0], "--version" == args[0]:
 		fmt.Printf("v%s\n", version)
 		os.Exit(0)
-	case serverMode:
+	case serverMode == args[0]:
 		cfg.mode = serverMode
-	case clientMode:
+	case clientMode == args[0]:
 		cfg.mode = clientMode
+	case isTargetInSshFormat(args[0]):
+		cfg.mode = rclientMode
 	default:
 		return Config{}, fmt.Errorf("unknown mode: %s", args[0])
 	}
@@ -237,13 +350,20 @@ func parseArgs(args []string) (Config, error) {
 			cfg.httpServerPort = port
 		}
 		cfg.sshdPort = sshPort
-	} else {
+	} else if cfg.mode == clientMode {
 		if port != 0 {
 			cfg.tcpServerPort = port
 		}
 		cfg.wsURL = connect
 		if cfg.wsURL == "" {
 			return Config{}, fmt.Errorf("--connect is required in client mode")
+		}
+	} else {
+		// or_else assume its in remote client mode and the input is in ssh format
+		cfg.target = args[0]
+
+		if cfg.target == "" {
+			return Config{}, fmt.Errorf("username@hostname is required in remote client mode")
 		}
 	}
 
@@ -587,6 +707,108 @@ func runClientSession(s *Session) {
 	infof("Client disconnected")
 }
 
+func runRClient(cfg Config) error {
+	username := parseSshFormatGetUserName(cfg.target)
+	hostname := parseSshFormatGetHostName(cfg.target)
+
+	wsURL, err := convertToWSS(hostname)
+	if err != nil {
+		return err
+	}
+
+	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		return fmt.Errorf("websocket connection failed: %w", err)
+	}
+	defer ws.Close()
+
+	conn := &wsConn{
+		ws: ws,
+	}
+
+	config := &ssh.ClientConfig{
+		User: username,
+
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+
+		Auth: []ssh.AuthMethod{
+			ssh.Password("***"),
+		},
+	}
+
+	clientConn, chans, reqs, err :=
+		ssh.NewClientConn(conn, hostname, config)
+
+	if err != nil {
+		return fmt.Errorf("SSH connection failed: %w", err)
+	}
+
+	client := ssh.NewClient(clientConn, chans, reqs)
+	defer client.Close()
+
+	session, err := client.NewSession()
+	if err != nil {
+		return fmt.Errorf("creating SSH session failed: %w", err)
+	}
+	defer session.Close()
+
+	// Get local terminal size.
+	fd := int(os.Stdin.Fd())
+
+	width, height, err := term.GetSize(fd)
+	if err != nil {
+		return fmt.Errorf("getting terminal size: %w", err)
+	}
+
+	// Get local terminal type.
+	termType := os.Getenv("TERM")
+	if termType == "" {
+		termType = "xterm-256color"
+	}
+
+	// Terminal modes.
+	modes := ssh.TerminalModes{
+		ssh.ECHO:          1,
+		ssh.TTY_OP_ISPEED: 14400,
+		ssh.TTY_OP_OSPEED: 14400,
+	}
+
+	// Ask the SSH server for a real PTY.
+	err = session.RequestPty(
+		termType,
+		height,
+		width,
+		modes,
+	)
+	if err != nil {
+		return fmt.Errorf("requesting PTY failed: %w", err)
+	}
+
+	// Connect the SSH session to our terminal.
+	session.Stdin = os.Stdin
+	session.Stdout = os.Stdout
+	session.Stderr = os.Stderr
+
+	// Start the remote shell.
+	if err := session.Shell(); err != nil {
+		return fmt.Errorf("starting shell failed: %w", err)
+	}
+
+	infof(
+		"SSH shell started (%dx%d, TERM=%s)",
+		width,
+		height,
+		termType,
+	)
+
+	// Wait until the remote shell exits.
+	if err := session.Wait(); err != nil {
+		return fmt.Errorf("SSH session ended: %w", err)
+	}
+
+	return nil
+}
+
 func isClosedNetworkError(err error) bool {
 	if err == net.ErrClosed {
 		return true
@@ -611,6 +833,8 @@ func main() {
 		runErr = runServer(cfg)
 	case clientMode:
 		runErr = runClient(cfg)
+	case rclientMode:
+		runErr = runRClient(cfg)
 	default:
 		usage()
 		os.Exit(1)
