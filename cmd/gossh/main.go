@@ -163,7 +163,7 @@ func main() {
 	// Directory startup
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		log.NewLogger(log.ERROR, os.Stderr).Error("Failed to detect home directory: %v", err)
+		fmt.Fprintf(os.Stderr, "Failed to detect home directory: %v\n", err)
 	}
 
 	cfg, err := parseArgs(os.Args[1:])
@@ -182,8 +182,8 @@ func main() {
 		path := fmt.Sprintf("%s/%s/server", homeDir, dir)
 		err := os.MkdirAll(path, 0755)
 		if err != nil {
-			fmt.Printf("Failed to initialize server directory: %v\n", err)
-			fmt.Printf("Logs may not be saved in daemon mode\n")
+			fmt.Fprintf(os.Stderr, "Failed to initialize server directory: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Logs may not be saved in daemon mode\n")
 		}
 
 		var logger log.Logger
@@ -193,8 +193,7 @@ func main() {
 
 			file, err := os.Create(logPath)
 			if err != nil {
-				fmt.Printf("Error creating file: %v\n", err)
-				return
+				fmt.Fprintf(os.Stderr, "Error creating file: %v\n", err)
 			}
 			defer file.Close()
 
@@ -215,8 +214,8 @@ func main() {
 		path := fmt.Sprintf("%s/%s/client", homeDir, dir)
 		err := os.MkdirAll(path, 0755)
 		if err != nil {
-			fmt.Printf("Failed to initialize client directory: %v\n", err)
-			fmt.Printf("Logs may not be saved in daemon mode\n")
+			fmt.Fprintf(os.Stderr, "Failed to initialize client directory: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Logs may not be saved in daemon mode\n")
 		}
 
 		var logger log.Logger
@@ -226,8 +225,7 @@ func main() {
 
 			file, err := os.Create(logPath)
 			if err != nil {
-				fmt.Printf("Error creating file: %v\n", err)
-				return
+				fmt.Fprintf(os.Stderr, "Error creating file: %v\n", err)
 			}
 			defer file.Close()
 
