@@ -86,7 +86,7 @@ func (l *logger) print(level LogLevel, format string, args ...any) {
 	}
 	// \r\x1b[2K moves to the beggining of the line, and clears it.
 	// time will be deleted from the underlying logger.
-	l.i.Printf("\r\x1b[2K %s [%s] %s\n", time.Now().Format(time.DateTime), level.getColored(), fmt.Sprintf(format, args...))
+	l.i.Printf("\x1b[2K %s [%s] %s\n", time.Now().Format(time.DateTime), level.getColored(), fmt.Sprintf(format, args...))
 }
 
 // SetVerbosity
