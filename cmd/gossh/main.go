@@ -1,9 +1,9 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"gossh/internal/client"
+	"gossh/internal/config"
 	"gossh/internal/daemon"
 	"gossh/internal/log"
 	"gossh/internal/server"
@@ -15,29 +15,7 @@ import (
 	"time"
 )
 
-const (
-	version = "1.5.0"
-
-	defaultSSHPort  = 22
-	defaultHTTPPort = 7777
-	defaultTCPPort  = 8888
-
-	serverMode = "server"
-	clientMode = "client"
-	statusMode = "status"
-
-	appDir = ".gossh"
-)
-
-type Config struct {
-	mode           string
-	httpServerPort int
-	sshdPort       int
-	tcpServerPort  int
-	wsURL          string
-	verbosity      log.LogLevel
-	daemon         bool
-}
+const appDir = ".gossh"
 
 func usage() {
 	fmt.Println(`Usage: gossh <mode> [OPTIONS]
@@ -64,6 +42,9 @@ Client mode options:
   --connect <url>       Remote WebSocket/HTTP URL (required)
   --port <port>         Local port to expose (default: 8888)
 
+Config File option:
+  --config <filepath>    Path to config file
+
 Examples:
   gossh server --port 7777 --ssh 22
   gossh client --connect https://example.com --port 8888
@@ -74,116 +55,15 @@ SSH connection:
   ssh user@localhost -p 8888`)
 }
 
-func parseArgs(args []string) (Config, error) {
-	if len(args) < 1 {
-		return Config{}, fmt.Errorf("mode is required")
-	}
-
-	cfg := Config{
-		httpServerPort: defaultHTTPPort,
-		sshdPort:       defaultSSHPort,
-		tcpServerPort:  defaultTCPPort,
-	}
-
-	switch args[0] {
-	case "version", "--version":
-		fmt.Printf("v%s\n", version)
-		os.Exit(0)
-	case serverMode:
-		cfg.mode = serverMode
-	case clientMode:
-		cfg.mode = clientMode
-	case statusMode:
-		cfg.mode = statusMode
-	default:
-		return Config{}, fmt.Errorf("unknown mode: %s", args[0])
-	}
-
-	fs := flag.NewFlagSet("gossh", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-
-	// We cannot use a normal bool flag for -vvv because the original CLI
-	// treats -v/-vv/-vvv as explicit verbosity levels.
-	var (
-		port    int
-		sshPort int
-		connect string
-		target  string
-		daemon  bool
-		quiet   bool
-		v       bool
-		vv      bool
-		vvv     bool
-		verbose bool
-	)
-
-	fs.IntVar(&port, "port", 0, "port")
-	fs.IntVar(&sshPort, "ssh", defaultSSHPort, "SSH port")
-	fs.StringVar(&connect, "connect", "", "remote URL")
-	fs.StringVar(&target, "target", "", "remote URL")
-	fs.BoolVar(&daemon, "daemon", false, "daemonize")
-	fs.BoolVar(&quiet, "quiet", false, "quiet")
-	fs.BoolVar(&v, "v", false, "info")
-	fs.BoolVar(&vv, "vv", false, "debug")
-	fs.BoolVar(&vvv, "vvv", false, "verbose")
-	fs.BoolVar(&verbose, "verbose", false, "info")
-
-	if err := fs.Parse(args[1:]); err != nil {
-		return Config{}, err
-	}
-
-	if daemon {
-		cfg.daemon = true
-	}
-
-	if quiet {
-		cfg.verbosity = log.ERROR
-	} else if vvv {
-		cfg.verbosity = log.TRACE
-	} else if vv {
-		cfg.verbosity = log.DEBUG
-	} else if v || verbose {
-		cfg.verbosity = log.INFO
-	} else {
-		cfg.verbosity = log.INFO
-	}
-
-	if cfg.mode == serverMode {
-		if port != 0 {
-			cfg.httpServerPort = port
-		}
-		cfg.sshdPort = sshPort
-	} else if cfg.mode == clientMode {
-		if port != 0 {
-			cfg.tcpServerPort = port
-		}
-		cfg.wsURL = connect
-		if cfg.wsURL == "" {
-			return Config{}, fmt.Errorf("--connect is required in client mode")
-		}
-	} else {
-		if port != 0 {
-			cfg.tcpServerPort = port
-		}
-		cfg.wsURL = target
-		if cfg.wsURL == "" {
-			return Config{}, fmt.Errorf("--target is required in status mode")
-		}
-	}
-
-	return cfg, nil
-}
-
 func main() {
 	var logFile *os.File
 	args := os.Args
-	cfg, err := parseArgs(args[1:])
+	cfg, err := config.ParseArgs(args[1:])
 	if err != nil {
 		usage()
 		fmt.Printf("%v\n", err)
 		os.Exit(1)
 	}
-
 	homeDir, err := os.UserHomeDir()
 	if err == nil {
 		root := filepath.Join(homeDir, appDir)
@@ -198,21 +78,21 @@ func main() {
 	}
 
 	// Logger could be replaced OR a custom writer could be added to
-	logger := log.NewLogger(cfg.verbosity, &log.LogWriter{File: logFile})
+	logger := log.NewLogger(cfg.Verbosity, &log.LogWriter{File: logFile})
 	logger.Trace("Initialized logger")
 	if logFile != nil {
 		logger.Info("Log file: %s", logFile.Name())
 	}
 
 	var runErr error
-	switch cfg.mode {
-	case serverMode:
-		if cfg.daemon {
+	switch cfg.Mode {
+	case config.ServerMode:
+		if cfg.Daemon {
 			if os.Getenv("DAEMON_ENV") == "1" {
 				runErr = server.NewGoSSHServer(
 					server.GoSSHServerConfiguration{
-						Port:    cfg.httpServerPort,
-						SSHPort: cfg.sshdPort,
+						Port:    cfg.HttpServerPort,
+						SSHPort: cfg.SSHDPort,
 						Timeout: time.Second * 3,
 					},
 					logger,
@@ -223,20 +103,20 @@ func main() {
 		} else {
 			runErr = server.NewGoSSHServer(
 				server.GoSSHServerConfiguration{
-					Port:    cfg.httpServerPort,
-					SSHPort: cfg.sshdPort,
+					Port:    cfg.HttpServerPort,
+					SSHPort: cfg.SSHDPort,
 					Timeout: time.Second * 3,
 				},
 				logger,
 			).Run()
 		}
-	case clientMode:
-		if cfg.daemon {
+	case config.ClientMode:
+		if cfg.Daemon {
 			if os.Getenv("DAEMON_ENV") == "1" {
 				runErr = client.NewGoSSHClient(
 					client.GoSSHClientConfiguration{
-						Port:            cfg.tcpServerPort,
-						RawWebsocketURL: cfg.wsURL,
+						Port:            cfg.TcpServerPort,
+						RawWebsocketURL: cfg.WSURL,
 					},
 					logger,
 				).Run()
@@ -246,14 +126,14 @@ func main() {
 		} else {
 			runErr = client.NewGoSSHClient(
 				client.GoSSHClientConfiguration{
-					Port:            cfg.tcpServerPort,
-					RawWebsocketURL: cfg.wsURL,
+					Port:            cfg.TcpServerPort,
+					RawWebsocketURL: cfg.WSURL,
 				},
 				logger,
 			).Run()
 		}
-	case statusMode:
-		url := strings.TrimRight(cfg.wsURL, "/") + "/status"
+	case config.StatusMode:
+		url := strings.TrimRight(cfg.WSURL, "/") + "/status"
 
 		resp, err := http.Get(url)
 		if err != nil {
