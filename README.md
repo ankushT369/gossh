@@ -156,5 +156,10 @@ bin/gossh
 ```
 
 
+## CLI reference
+
+See [docs/cli-reference.md](docs/cli-reference.md) for the server, client, and status flags, defaults, and configuration precedence.
+
+
 ## Contribution
 Everyone is welcome to contribute if you want to learn low-level network programming this can be helpful. Please make a different branch before any pull request.
