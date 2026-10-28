@@ -76,7 +76,7 @@ On the client machine, connect to the server using the ngrok or cloudflare url:
 
 ```bash
 gossh client \
-  --connect https://following-reviews-select-lee.trycloudflare.com \
+  --connect https://your-tunnel.trycloudflare.com \
   --port 8888
 ```
 
