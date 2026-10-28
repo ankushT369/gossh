@@ -115,6 +115,7 @@ func (gossh GoSSHClient) handleClientTCP(tcp net.Conn, wsURL string, originalURL
 	ws, _, err := dialer.Dial(wsURL, nil)
 	if err != nil {
 		gossh.logger.Error("Failed to create WebSocket connection: %v", err)
+		tcp.Close()
 		return
 	}
 
