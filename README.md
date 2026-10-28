@@ -88,7 +88,7 @@ gossh client \
 Now use standard SSH to connect:
 
 ```bash
-ssh ankush@localhost -p 8888
+ssh user@localhost -p 8888
 ```
 <p align="center">
   <img src="docs/step4.png" alt="gossh" width="70%" />
