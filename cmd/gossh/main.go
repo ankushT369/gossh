@@ -138,6 +138,10 @@ func main() {
 	case config.ServerMode:
 		if cfg.Daemon {
 			if os.Getenv("DAEMON_ENV") == "1" {
+				pidFile := filepath.Join(homeDir, appDir,
+					fmt.Sprintf("server-%d.pid", cfg.HttpServerPort))
+				defer os.Remove(pidFile)
+
 				runErr = server.NewGoSSHServer(
 					server.GoSSHServerConfiguration{
 						Port:    cfg.HttpServerPort,
@@ -150,7 +154,10 @@ func main() {
 					logger,
 				).Run()
 			} else {
-				daemon.Daemonize(logger, args, filepath.Join(homeDir, appDir, "server.pid"))
+				pidFile := filepath.Join(homeDir, appDir,
+					fmt.Sprintf("server-%d.pid", cfg.HttpServerPort))
+
+				daemon.Daemonize(logger, args, pidFile)
 			}
 		} else {
 			runErr = server.NewGoSSHServer(
@@ -168,6 +175,10 @@ func main() {
 	case config.ClientMode:
 		if cfg.Daemon {
 			if os.Getenv("DAEMON_ENV") == "1" {
+				pidFile := filepath.Join(homeDir, appDir,
+					fmt.Sprintf("server-%d.pid", cfg.HttpServerPort))
+				defer os.Remove(pidFile)
+
 				runErr = client.NewGoSSHClient(
 					client.GoSSHClientConfiguration{
 						Port:            cfg.TcpServerPort,
@@ -176,7 +187,10 @@ func main() {
 					logger,
 				).Run()
 			} else {
-				daemon.Daemonize(logger, args, filepath.Join(homeDir, appDir, "client.pid"))
+				pidFile := filepath.Join(homeDir, appDir,
+					fmt.Sprintf("client-%d.pid", cfg.TcpServerPort))
+
+				daemon.Daemonize(logger, args, pidFile)
 			}
 		} else {
 			runErr = client.NewGoSSHClient(
