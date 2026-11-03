@@ -176,7 +176,7 @@ func main() {
 		if cfg.Daemon {
 			if os.Getenv("DAEMON_ENV") == "1" {
 				pidFile := filepath.Join(homeDir, appDir,
-					fmt.Sprintf("server-%d.pid", cfg.HttpServerPort))
+					fmt.Sprintf("server-%d.pid", cfg.TcpServerPort))
 				defer os.Remove(pidFile)
 
 				runErr = client.NewGoSSHClient(
