@@ -87,7 +87,7 @@ echo "[TEST] Starting gossh server with --daemon flag..."
 "$GOSSH" server --port "$SERVER_PORT" --ssh 22 -vvv --daemon
 sleep 1
 
-SERVER_PID=$(cat ~/.gossh/server.pid)
+SERVER_PID=$(cat ~/.gossh/server-${SERVER_PORT}.pid)
 
 if ps -p "$SERVER_PID" > /dev/null; then
     echo "[OK] Server started (PID=$SERVER_PID)"
@@ -98,7 +98,7 @@ fi
 
 echo "[TEST] Starting gossh client with --daemon flag..."
 "$GOSSH" client --connect "$WS_URL" --port "$CLIENT_PORT" -vvv --daemon
-CLIENT_PID=$(cat ~/.gossh/client.pid)
+CLIENT_PID=$(cat ~/.gossh/client-${CLIENT_PORT}.pid)
 sleep 1
 
 if ps -p "$CLIENT_PID" > /dev/null; then
