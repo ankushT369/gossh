@@ -240,7 +240,7 @@ test_gossh_server_daemon() {
         -vvv \
         --daemon
 
-    SERVER_PID=$(cat ~/.gossh/server.pid)
+    SERVER_PID=$(cat ~/.gossh/server-${SERVER_PORT}.pid)
 
     if ! wait_for_port "$SERVER_PORT" "gossh server"; then
         dump_logs
@@ -275,7 +275,7 @@ test_gossh_client_daemon() {
         -vvv \
         --daemon
 
-    CLIENT_PID=$(cat ~/.gossh/client.pid)
+    CLIENT_PID=$(cat ~/.gossh/client-${CLIENT_PORT}.pid)
     if ! wait_for_port "$CLIENT_PORT" "gossh client"; then
         dump_logs
         exit 1
