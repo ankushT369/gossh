@@ -115,8 +115,19 @@ func main() {
 		root := filepath.Join(homeDir, appDir)
 		if err := os.MkdirAll(root, os.ModePerm); err != nil {
 			fmt.Print(err)
-		} else {
-			logFile, err = os.OpenFile(filepath.Join(homeDir, appDir, "log.txt"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+		} else if cfg.Mode == config.ServerMode || cfg.Mode == config.ClientMode {
+			var logName string
+			if cfg.Mode == config.ServerMode {
+				logName = fmt.Sprintf("server-%d.log", cfg.HttpServerPort)
+			} else {
+				logName = fmt.Sprintf("client-%d.log", cfg.TcpServerPort)
+			}
+
+			logFile, err = os.OpenFile(
+				filepath.Join(homeDir, appDir, logName),
+				os.O_CREATE|os.O_APPEND|os.O_WRONLY,
+				0600,
+			)
 			if err != nil {
 				fmt.Print(err)
 			}
@@ -176,7 +187,7 @@ func main() {
 		if cfg.Daemon {
 			if os.Getenv("DAEMON_ENV") == "1" {
 				pidFile := filepath.Join(homeDir, appDir,
-					fmt.Sprintf("server-%d.pid", cfg.TcpServerPort))
+					fmt.Sprintf("client-%d.pid", cfg.TcpServerPort))
 				defer os.Remove(pidFile)
 
 				runErr = client.NewGoSSHClient(
