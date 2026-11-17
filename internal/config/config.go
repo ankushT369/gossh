@@ -30,7 +30,7 @@ type Config struct {
 
 const (
 	// Version is the current gossh release version.
-	Version = "1.8.1"
+	Version = "1.9.0"
 
 	// Installation URL
 	InstallerURL = "https://raw.githubusercontent.com/ankushT369/gossh/main/install.sh"

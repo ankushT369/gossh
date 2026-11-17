@@ -1,4 +1,5 @@
-#!/bin/bash
+
+#!/usr/bin/env bash
 
 set -e
 
@@ -23,56 +24,33 @@ case "$OS:$ARCH" in
 esac
 
 URL="https://github.com/$REPO/releases/latest/download/$ASSET"
-TMP_FILE="$(mktemp)"
-
-cleanup() {
-    rm -f "$TMP_FILE"
-}
-
-trap cleanup EXIT
 
 mkdir -p "$INSTALL_DIR"
 
+TMP_FILE="$(mktemp)"
+trap 'rm -f "$TMP_FILE"' EXIT
+
 echo "[-] Installing gossh"
-echo
 
-# Download in background
-curl -fsSL "$URL" -o "$TMP_FILE" &
-PID=$!
-
-# Braille spinner
-while kill -0 "$PID" 2>/dev/null; do
-    for frame in "⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏"; do
-        printf "\r[-] Downloading gossh %s" "$frame"
-        sleep 0.08
-
-        if ! kill -0 "$PID" 2>/dev/null; then
-            break
-        fi
-    done
-done
-
-# Check whether curl succeeded
-if ! wait "$PID"; then
-    printf "\r[✗] Downloading gossh\n"
-    echo "Failed to download gossh."
+# Download using curl or wget
+if command -v curl >/dev/null 2>&1; then
+    curl -fL "$URL" -o "$TMP_FILE"
+elif command -v wget >/dev/null 2>&1; then
+    wget -O "$TMP_FILE" "$URL"
+else
+    echo "Error: curl or wget is required."
     exit 1
 fi
 
-printf "\r[✓] Downloaded gossh  \n"
-
-# Install and rename binary
+chmod +x "$TMP_FILE"
 mv "$TMP_FILE" "$INSTALL_DIR/$BINARY"
-chmod +x "$INSTALL_DIR/$BINARY"
 
-echo "[✓] Installed gossh to $INSTALL_DIR/$BINARY"
+echo "[✓] Installed gossh"
 
-# Check PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-    echo
     echo "Add this to your shell configuration:"
     echo 'export PATH="$HOME/.local/bin:$PATH"'
 fi
 
-echo
-echo "[✓] run: gossh version"
+echo "[✓] Run: gossh version"
+

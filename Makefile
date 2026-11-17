@@ -3,7 +3,7 @@ BIN_DIR := bin
 GO := go
 RELEASE_LDFLAGS := -ldflags="-s -w"
 
-.PHONY: all build vet test linux mac release-linux release-mac clean
+.PHONY: all build vet test linux mac windows release-linux release-mac release-windows clean
 
 all: build
 
@@ -43,6 +43,12 @@ mac:
 		-o $(BIN_DIR)/$(BINARY)-darwin-arm64 \
 		cmd/gossh/main.go
 
+windows:
+	mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build \
+		-o $(BIN_DIR)/$(BINARY)-windows-amd64.exe \
+		cmd/gossh/main.go
+
 release-linux:
 	mkdir -p $(BIN_DIR)
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build \
@@ -55,6 +61,13 @@ release-mac:
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GO) build \
 		$(RELEASE_LDFLAGS) \
 		-o $(BIN_DIR)/$(BINARY)-darwin-arm64 \
+		cmd/gossh/main.go
+
+release-windows:
+	mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build \
+		$(RELEASE_LDFLAGS) \
+		-o $(BIN_DIR)/$(BINARY)-windows-amd64.exe \
 		cmd/gossh/main.go
 
 clean:

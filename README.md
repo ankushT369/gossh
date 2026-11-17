@@ -25,10 +25,38 @@ gossh is:
 It does not replace SSH or require changes to the SSH server—only provides a flexible transport layer on top.
 
 ## How to use
+
 ### 0. Install
+
+**Linux / macOS**
+
+Using `curl`:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ankushT369/gossh/main/install.sh | bash
 ```
+
+Using `wget`:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/ankushT369/gossh/main/install.sh | bash
+```
+
+**Windows (PowerShell)**
+
+Run the following command in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/ankushT369/gossh/main/install.ps1 | iex
+```
+
+After installation, verify that `gossh` is available:
+
+```bash
+gossh version
+```
+
+If the command is not found on Linux/macOS, make sure `$HOME/.local/bin` is in your `PATH`. On Windows, open a new PowerShell session if necessary.
 
 ###  1. Start gossh Server
 
