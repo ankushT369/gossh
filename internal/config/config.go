@@ -19,6 +19,7 @@ import (
 type Config struct {
 	Mode           string
 	HttpServerPort int
+	SSHDHost       string
 	SSHDPort       int
 	TcpServerPort  int
 	WSURL          string
@@ -30,12 +31,14 @@ type Config struct {
 
 const (
 	// Version is the current gossh release version.
-	Version = "1.9.0"
+	Version = "1.9.1"
 
 	// Installation URL
 	InstallerURL = "https://raw.githubusercontent.com/ankushT369/gossh/main/install.sh"
 
-	// DefaultSSHPort is the local SSH daemon port used by server mode.
+	// DefaultSSHHost is the SSH daemon host used by server mode.
+	DefaultSSHHost = "127.0.0.1"
+	// DefaultSSHPort is the SSH daemon port used by server mode.
 	DefaultSSHPort = 22
 	// DefaultHTTPPort is the HTTP/WebSocket listener port used by server mode.
 	DefaultHTTPPort = 7777
@@ -94,6 +97,7 @@ func findConfigFile(configFile string) (string, error) {
 func applyFileConfig(configFile string, cfg *Config) error {
 	type ServerConfig struct {
 		HttpServerPort int          `yaml:"port" toml:"port"`
+		SSHDHost       string       `yaml:"ssh_host" toml:"ssh_host"`
 		SSHDPort       int          `yaml:"ssh" toml:"ssh"`
 		Verbosity      log.LogLevel `yaml:"verbosity" toml:"verbosity"`
 		Daemon         bool         `yaml:"daemon" toml:"daemon"`
@@ -139,6 +143,9 @@ func applyFileConfig(configFile string, cfg *Config) error {
 		if fileconfig.Serverconfig.HttpServerPort != 0 {
 			cfg.HttpServerPort = fileconfig.Serverconfig.HttpServerPort
 		}
+		if fileconfig.Serverconfig.SSHDHost != "" {
+			cfg.SSHDHost = fileconfig.Serverconfig.SSHDHost
+		}
 		if fileconfig.Serverconfig.SSHDPort != 0 {
 			cfg.SSHDPort = fileconfig.Serverconfig.SSHDPort
 		}
@@ -181,6 +188,7 @@ func ParseArgs(args []string) (Config, error) {
 
 	cfg := Config{
 		HttpServerPort: DefaultHTTPPort,
+		SSHDHost:       DefaultSSHHost,
 		SSHDPort:       DefaultSSHPort,
 		TcpServerPort:  DefaultTCPPort,
 	}
@@ -208,6 +216,7 @@ func ParseArgs(args []string) (Config, error) {
 	// treats -v/-vv/-vvv as explicit verbosity levels.
 	var (
 		port       int
+		sshHost    string
 		sshPort    int
 		connect    string
 		target     string
@@ -225,6 +234,7 @@ func ParseArgs(args []string) (Config, error) {
 	fs.IntVar(&port, "port", 0, "port")
 	// Initializing sshPort to 0 helps in checking for CLI option checking later
 	fs.IntVar(&sshPort, "ssh", 0, "SSH port")
+	fs.StringVar(&sshHost, "ssh-host", "", "SSH host")
 	fs.StringVar(&connect, "connect", "", "remote URL")
 	fs.StringVar(&target, "target", "", "remote URL")
 	fs.BoolVar(&daemon, "daemon", false, "daemonize")
@@ -263,6 +273,10 @@ func ParseArgs(args []string) (Config, error) {
 		ssh_port, err := strconv.Atoi(portStr)
 		if err == nil {
 			cfg.SSHDPort = ssh_port
+		}
+		sshHost = os.Getenv("GOSSH_SSH_HOST")
+		if sshHost != "" {
+			cfg.SSHDHost = sshHost
 		}
 	case ClientMode:
 		wsURL := os.Getenv("GOSSH_CONNECT")
@@ -305,6 +319,9 @@ func ParseArgs(args []string) (Config, error) {
 	case ServerMode:
 		if port != 0 {
 			cfg.HttpServerPort = port
+		}
+		if sshHost != "" {
+			cfg.SSHDHost = sshHost
 		}
 		if sshPort != 0 {
 			cfg.SSHDPort = sshPort

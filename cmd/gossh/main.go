@@ -62,6 +62,7 @@ Verbosity control:
 
 Server mode options:
   --port <port>         HTTP/WebSocket server port (default: 7777)
+  --ssh-host <host>     SSH Host IPv4 (default: 127.0.0.1)
   --ssh <port>          SSH daemon port (default: 22)
   --daemon              Run the server in the background
   --max-conns           Maximum connections server can hold
@@ -79,7 +80,8 @@ Config File option:
   --config <filepath>   Path to config file
 
 Examples:
-  gossh server --port 7777 --ssh 22
+  gossh server --port 7777 --ssh 22 (default --ssh-host: localhost)
+  gossh server --port 7777 --ssh-host 10.2.2.76 --ssh 22
   gossh client --connect https://example.com --port 8888
   gossh server --daemon
   gossh status

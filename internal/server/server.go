@@ -50,6 +50,7 @@ type GoSSHServer struct {
 // GoSSHServerConfiguration contains listener, SSH, timeout, and connection-limit settings.
 type GoSSHServerConfiguration struct {
 	Port     int
+	SSHHost  string
 	SSHPort  int
 	Timeout  time.Duration
 	MaxConns int
@@ -118,7 +119,7 @@ func (gossh *GoSSHServer) Run() error {
 	gossh.logger.Info("SSH port: %d", gossh.conf.SSHPort)
 	gossh.logger.Info("Checking SSH connection")
 
-	sshUrl := fmt.Sprintf("127.0.0.1:%d", gossh.conf.SSHPort)
+	sshUrl := fmt.Sprintf("%s:%d", gossh.conf.SSHHost, gossh.conf.SSHPort)
 	conn, err := net.DialTimeout("tcp", sshUrl, gossh.conf.Timeout)
 
 	if err != nil {
