@@ -192,7 +192,11 @@ func (gossh *GoSSHServer) handleServerWebSocket(w http.ResponseWriter, r *http.R
 	}
 	gossh.logger.Info("WebSocket connection established")
 
-	sshAddr := fmt.Sprintf("localhost:%d", gossh.conf.SSHPort)
+	sshAddr := net.JoinHostPort(
+		gossh.conf.SSHHost,
+		strconv.Itoa(gossh.conf.SSHPort),
+	)
+
 	tcp, err := net.Dial("tcp", sshAddr)
 	if err != nil {
 		gossh.logger.Warn("Cannot connect to sshd on %s: %v", sshAddr, err)
