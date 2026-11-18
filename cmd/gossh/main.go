@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -33,8 +34,12 @@ func checkForUpdates() {
 		fmt.Printf("A new gossh version is available: %s -> %s\n",
 			config.Version, latest)
 		fmt.Println("Upgrade with: `gossh upgrade`")
-		fmt.Println("Or run:")
+		fmt.Println("Or run on Linux/Mac:")
 		fmt.Println("   curl -fsSL https://raw.githubusercontent.com/ankushT369/gossh/main/install.sh | bash")
+		fmt.Println("Or using wget:")
+		fmt.Println("   wget -qO- https://raw.githubusercontent.com/ankushT369/gossh/main/install.sh | bash")
+		fmt.Println("Or run on Windows:")
+		fmt.Println("   irm https://raw.githubusercontent.com/ankushT369/gossh/main/install.ps1 | iex")
 		fmt.Printf("   Release notes: %s\n\n", releaseURL)
 	}
 }
@@ -260,7 +265,27 @@ func main() {
 		fmt.Println(string(updatedBytes))
 	case config.UpgradeMode:
 		client := &http.Client{Timeout: 30 * time.Second}
-		resp, err := client.Get(config.InstallerURL)
+
+		var installerURL string
+		var cmd *exec.Cmd
+
+		switch runtime.GOOS {
+		case "windows":
+			installerURL = config.InstallerWinURL
+
+		case "linux", "darwin":
+			installerURL = config.InstallerUnixURL
+
+		default:
+			runErr = fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
+			break
+		}
+
+		if runErr != nil {
+			break
+		}
+
+		resp, err := client.Get(installerURL)
 		if err != nil {
 			runErr = fmt.Errorf("cannot download installer: %w", err)
 			break
@@ -274,17 +299,29 @@ func main() {
 
 		script, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
+
 		if err != nil {
 			runErr = fmt.Errorf("cannot read installer: %w", err)
 			break
 		}
 
-		cmd := exec.Command("bash")
+		if runtime.GOOS == "windows" {
+			cmd = exec.Command(
+				"powershell.exe",
+				"-NoProfile",
+				"-ExecutionPolicy", "Bypass",
+				"-Command", "-",
+			)
+		} else {
+			cmd = exec.Command("bash")
+		}
+
 		cmd.Stdin = bytes.NewReader(script)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
 		fmt.Println("Installing latest gossh release...")
+
 		if err := cmd.Run(); err != nil {
 			runErr = fmt.Errorf("upgrade failed: %w", err)
 			break

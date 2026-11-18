@@ -34,7 +34,8 @@ const (
 	Version = "1.9.1"
 
 	// Installation URL
-	InstallerURL = "https://raw.githubusercontent.com/ankushT369/gossh/main/install.sh"
+	InstallerUnixURL = "https://raw.githubusercontent.com/ankushT369/gossh/main/install.sh"
+	InstallerWinURL  = "https://raw.githubusercontent.com/ankushT369/gossh/main/install.ps1"
 
 	// DefaultSSHHost is the SSH daemon host used by server mode.
 	DefaultSSHHost = "127.0.0.1"
