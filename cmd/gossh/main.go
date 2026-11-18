@@ -163,7 +163,7 @@ func main() {
 				runErr = server.NewGoSSHServer(
 					server.GoSSHServerConfiguration{
 						Port:    cfg.HttpServerPort,
-						SSHHost:  cfg.SSHDHost,
+						SSHHost: cfg.SSHDHost,
 						SSHPort: cfg.SSHDPort,
 						Timeout: time.Second * 3,
 
@@ -182,7 +182,7 @@ func main() {
 			runErr = server.NewGoSSHServer(
 				server.GoSSHServerConfiguration{
 					Port:    cfg.HttpServerPort,
-					SSHHost:  cfg.SSHDHost,
+					SSHHost: cfg.SSHDHost,
 					SSHPort: cfg.SSHDPort,
 					Timeout: time.Second * 3,
 

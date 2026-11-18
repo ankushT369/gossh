@@ -117,9 +117,14 @@ func (gossh *GoSSHServer) Run() error {
 		gossh.logger.Info("Max connections: %d", gossh.conf.MaxConns)
 	}
 	gossh.logger.Info("SSH port: %d", gossh.conf.SSHPort)
-	gossh.logger.Info("Checking SSH connection")
 
-	sshUrl := fmt.Sprintf("%s:%d", gossh.conf.SSHHost, gossh.conf.SSHPort)
+	sshUrl := net.JoinHostPort(
+		gossh.conf.SSHHost,
+		strconv.Itoa(gossh.conf.SSHPort),
+	)
+
+	gossh.logger.Info("Checking SSH connection: %s", sshUrl)
+
 	conn, err := net.DialTimeout("tcp", sshUrl, gossh.conf.Timeout)
 
 	if err != nil {

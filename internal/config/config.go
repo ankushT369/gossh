@@ -275,9 +275,9 @@ func ParseArgs(args []string) (Config, error) {
 		if err == nil {
 			cfg.SSHDPort = ssh_port
 		}
-		sshHost = os.Getenv("GOSSH_SSH_HOST")
-		if sshHost != "" {
-			cfg.SSHDHost = sshHost
+		hostStr := os.Getenv("GOSSH_SSH_HOST")
+		if hostStr != "" {
+			cfg.SSHDHost = hostStr
 		}
 	case ClientMode:
 		wsURL := os.Getenv("GOSSH_CONNECT")
