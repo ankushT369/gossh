@@ -35,7 +35,7 @@ export HOME="$WORK_DIR/home"
 mkdir -p "$HOME"
 
 echo "[TEST] Starting gossh server on port $STATUS_PORT..."
-"$GOSSH" server --port "$STATUS_PORT" --ssh 1 -q >"$WORK_DIR/server.log" 2>&1 &
+"$GOSSH" server --port "$STATUS_PORT" --ssh 1 >"$WORK_DIR/server.log" 2>&1 &
 SERVER_PID=$!
 
 ready=false
