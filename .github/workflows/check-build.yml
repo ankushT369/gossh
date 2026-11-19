@@ -39,6 +39,11 @@ jobs:
       - name: Build
         run: make build
 
+      - name: CLI status test
+        run: |
+          chmod +x test/status-test.sh
+          ./test/status-test.sh
+
       - name: Vet
         run: make vet
 
