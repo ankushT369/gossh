@@ -59,7 +59,6 @@ Modes:
   upgrade               Upgrades gossh
 
 Verbosity control:
-  -q, --quiet           Suppress info/debug output
   -v                    Info level logging
   -vv                   Debug level logging
   -vvv                  Verbose logging
